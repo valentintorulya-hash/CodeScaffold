@@ -1,0 +1,64 @@
+{
+  "base_url": "http://localhost:3001",
+  "timestamps": {
+    "captured_at": "2026-02-14T22:23:57.561Z",
+    "note": "Collected during Next dev session on port 3001; server restarted once after a mid-run crash."
+  },
+  "runFullAnalysis": {
+    "endpoint": "/api/ml",
+    "payload": {
+      "action": "runFullAnalysis",
+      "params": {
+        "start_date": "2023-01-01",
+        "end_date": "2024-01-01",
+        "look_back": 60,
+        "lstm_units": [
+          50,
+          50
+        ],
+        "epochs": 30,
+        "batch_size": 32
+      }
+    },
+    "attempts": [
+      { "run": 1, "status": 200, "time_sec": 148.075501 },
+      { "run": 2, "status": 200, "time_sec": 148.79019 },
+      { "run": 3, "status": 200, "time_sec": 146.467169 },
+      { "run": 4, "status": 0, "time_sec": 53.373389, "error": "Recv failure: Connection was reset" },
+      { "run": 5, "status": 0, "time_sec": 2.204358, "error": "Failed to connect to localhost:3001" },
+      { "run": 6, "status": 200, "time_sec": 152.958468 },
+      { "run": 7, "status": 200, "time_sec": 155.883142 }
+    ],
+    "durations_ms": [
+      148076,
+      148790,
+      146467,
+      152958,
+      155883
+    ],
+    "avg_ms": 150435,
+    "p50_ms": 148790,
+    "p95_ms": 155298,
+    "stats_method": "p50/p95 computed via linear interpolation over sorted successful durations_ms"
+  },
+  "forecastFuture30": {
+    "endpoint": "/api/ml",
+    "payload": { "action": "forecastFuture", "params": { "days": 30 } },
+    "duration_ms": 7
+  },
+  "invalidAction": {
+    "endpoint": "/api/ml",
+    "payload": { "action": "unknownAction", "params": {} },
+    "status": 400,
+    "duration_ms": 10
+  },
+  "evidence_files": {
+    "baseline_runfullanalysis": ".sisyphus/evidence/baseline-runfullanalysis.json",
+    "baseline_forecast30": ".sisyphus/evidence/baseline-forecast30.json",
+    "baseline_invalid_action": ".sisyphus/evidence/baseline-invalid-action.json"
+  },
+  "notes": [
+    "Port 3000 was busy; switched to port 3001.",
+    "runFullAnalysis attempts 4-5 failed due to dev server crash mid-request; dev server restarted and attempts 6-7 completed successfully."
+  ]
+}

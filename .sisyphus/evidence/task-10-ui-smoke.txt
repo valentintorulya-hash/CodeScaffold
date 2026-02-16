@@ -1,0 +1,19 @@
+Task 10 UI Smoke (Playwright MCP)
+=================================
+
+Date: 2026-02-15
+URL: http://localhost:3000
+
+Scenario:
+1) Open dashboard
+2) Switch tabs: Прогнозы -> Сравнение моделей -> Анализ данных -> Прогноз на будущее
+3) Verify content renders and tab switches remain responsive
+
+Results:
+- Dashboard loaded successfully
+- All 4 tabs clickable and become selected (`aria-selected=true`)
+- Future tab rendered forecast chart + table rows (dates 2024-01-01..2024-02-09)
+- Full-page screenshot captured
+
+Evidence:
+- .sisyphus/evidence/task-10-e2e.png

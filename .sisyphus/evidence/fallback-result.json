@@ -1,0 +1,12 @@
+{
+  "scenario": "runFullAnalysis with FastAPI service stopped",
+  "status": 200,
+  "elapsed_ms": 163682,
+  "success": true,
+  "has_data_info": true,
+  "has_predictions": true,
+  "has_stationarity": true,
+  "has_forecast": true,
+  "error": null,
+  "source": "pty_aef1bd0d"
+}
