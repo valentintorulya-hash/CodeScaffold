@@ -1,0 +1,14 @@
+Task 1 Backend Path Inventory
+
+[OK] src/app/api/route.ts
+[OK] src/app/api/ml/route.ts
+[OK] scripts/ml_service.py
+[OK] scripts/ml_backend.py
+[OK] Caddyfile
+
+Listing excerpt (ls -l):
+-rw-r--r-- 1 valen 197609   493 Feb 13 07:34 Caddyfile
+-rw-r--r-- 1 valen 197609 45230 Feb 15 03:11 scripts/ml_backend.py
+-rw-r--r-- 1 valen 197609  4842 Feb 15 01:01 scripts/ml_service.py
+-rw-r--r-- 1 valen 197609 18955 Feb 15 03:33 src/app/api/ml/route.ts
+-rw-r--r-- 1 valen 197609   143 Feb 14 06:04 src/app/api/route.ts

@@ -1,0 +1,2 @@
+{"success":false,"error":"ML service is unavailable and fallback is disabled"}
+HTTP_CODE:500

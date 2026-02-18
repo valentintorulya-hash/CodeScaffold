@@ -1,0 +1,35 @@
+TASK: 9. Start Caddy (PTY) and verify proxy
+RESULT: FAIL
+
+Start command attempted:
+- cmd /c caddy run --config Caddyfile
+- (original PTY attempt also used: caddy run --config Caddyfile)
+
+Startup/error output excerpt (PTY):
+- "caddy" не является внутренней или внешней
+- командой, исполняемой программой или пакетным файлом.
+- PTY session status: exited with code 1
+
+Missing-binary proof:
+- Command: where.exe caddy
+- Output: INFO: Could not find files for the given pattern(s).
+
+- Command: which caddy
+- Output: which: no caddy in PATH
+
+Proxy verification:
+- Command: curl -i http://127.0.0.1:81/api
+- Output excerpt:
+  - curl: (7) Failed to connect to 127.0.0.1 port 81 after 2008 ms: Could not connect to server
+
+- Command: curl -i --max-time 10 http://127.0.0.1:81/api
+- Output excerpt:
+  - curl: (7) Failed to connect to 127.0.0.1 port 81 after 2006 ms: Could not connect to server
+
+Cleanup/process state:
+- PTY session `pty_c3d83d0c` exited naturally (exit code 1), then removed with `pty_kill cleanup=true`.
+- Process check command: powershell -NoProfile -Command "\$p = Get-Process -Name caddy -ErrorAction SilentlyContinue; if (\$null -ne \$p) { \$p | Select-Object Id,ProcessName | Format-Table -AutoSize } else { Write-Output 'NO_CADDY_PROCESS' }"
+- Process check output: NO_CADDY_PROCESS
+
+Conclusion:
+- Caddy binary is unavailable in PATH on this machine, so Task 9 cannot bring up proxy listener :81.

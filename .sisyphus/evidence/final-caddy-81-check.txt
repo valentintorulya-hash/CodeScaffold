@@ -1,0 +1,22 @@
+Final checklist Caddy :81 validation
+[GET /api via :81]
+HTTP/1.1 200 OK
+Content-Type: application/json
+Date: Tue, 17 Feb 2026 10:32:13 GMT
+Vary: rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch
+Via: 1.1 Caddy
+Transfer-Encoding: chunked
+
+{"message":"РџСЂРёРІРµС‚, РјРёСЂ!"}
+stderr: (empty)
+
+[POST /api/ml healthCheck via :81]
+HTTP/1.1 200 OK
+Content-Type: application/json
+Date: Tue, 17 Feb 2026 10:32:13 GMT
+Vary: rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch
+Via: 1.1 Caddy
+Transfer-Encoding: chunked
+
+{"success":true,"status":"online"}
+stderr: (empty)

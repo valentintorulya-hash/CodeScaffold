@@ -1,0 +1,23 @@
+.sisyphus/evidence/task-7-fastapi-health.txt: exists=True size=1374
+.sisyphus/evidence/task-8-next-dev.txt: exists=True size=1107
+.sisyphus/evidence/task-9-caddy-up.txt: exists=True size=1489
+.sisyphus/evidence/task-10-api-direct.txt: exists=True size=737
+.sisyphus/evidence/task-10-api-caddy.txt: exists=True size=643
+.sisyphus/evidence/task-11-ml-health-direct.txt: exists=True size=734
+.sisyphus/evidence/task-11-ml-health-caddy.txt: exists=True size=706
+.sisyphus/evidence/task-12-ml-preview.json: exists=True size=37299
+.sisyphus/evidence/task-12-missing-action.txt: exists=True size=750
+.sisyphus/evidence/task-12-unknown-action.txt: exists=True size=820
+.sisyphus/evidence/task-12-forecast-without-analysis.txt: exists=True size=841
+.sisyphus/evidence/task-13-ml-analysis.json: exists=True size=59224
+.sisyphus/evidence/task-14-forecast-30.json: exists=True size=2684
+.sisyphus/evidence/task-14-forecast-31.json: exists=True size=2779
+.sisyphus/evidence/task-15-concurrency.txt: exists=True size=798
+.sisyphus/evidence/task-16-fallback-success.txt: exists=True size=59692
+.sisyphus/evidence/task-17-prod-requires-fastapi.txt: exists=True size=244
+.sisyphus/evidence/task-18-standalone-layout.txt: exists=True size=5869
+.sisyphus/evidence/task-19-standalone-smoke.txt: exists=True size=890
+.sisyphus/evidence/backend-correctness-report.md: exists=True size=3325
+
+.sisyphus/evidence/final-caddy-81-check.txt: exists=True size=658
+.sisyphus/evidence/final-standalone-assets-check.txt: exists=True size=297

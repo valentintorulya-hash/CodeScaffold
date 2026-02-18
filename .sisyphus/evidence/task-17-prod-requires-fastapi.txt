@@ -1,0 +1,14 @@
+Task 17: fallback disabled requires FastAPI
+
+request stdout:
+
+{"success":false,"error":"ML service is unavailable and fallback is disabled"}
+HTTP_CODE:500
+
+request stderr:
+
+(empty)
+
+non2xx_detected=True
+
+success_false_detected=True
