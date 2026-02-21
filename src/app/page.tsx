@@ -595,7 +595,7 @@ export default function Dashboard() {
                   Гибридная модель ARIMA-LSTM
                 </h1>
                 <p className="text-sm text-slate-300">
-                  Прогнозирование акций ПАО «Сбербанк» (SBER.ME)
+                  Прогнозирование акций ПАО «Сбербанк» (SBER)
                 </p>
               </div>
             </div>
@@ -1036,7 +1036,7 @@ export default function Dashboard() {
             {/* Исходные данные */}
             <Card className="border-slate-700/70 bg-slate-900/65 backdrop-blur-md">
               <CardHeader>
-                <CardTitle className="font-serif text-slate-50">Исторические данные акций SBER.ME</CardTitle>
+                <CardTitle className="font-serif text-slate-50">Исторические данные акций SBER</CardTitle>
                 <CardDescription className="text-slate-300">
                   Цена акций Сбербанка на Московской бирже
                 </CardDescription>
