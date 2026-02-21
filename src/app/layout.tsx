@@ -20,15 +20,15 @@ const instrumentSerif = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
-  title: "Шаблон Next.js для ИИ-разработки",
+  title: "Прогнозирование акций ПАО «Сбербанк»",
   description: "Современный шаблон Next.js с TypeScript, Tailwind CSS и shadcn/ui для быстрого старта.",
-  keywords: ["Next.js", "TypeScript", "Tailwind CSS", "shadcn/ui", "ИИ-разработка", "React"],
+  keywords: ["Next.js", "TypeScript", "Tailwind CSS", "shadcn/ui", "React"],
   authors: [{ name: "Команда проекта" }],
   icons: {
     icon: "/favicon.ico",
   },
   openGraph: {
-    title: "Шаблон Next.js для ИИ-разработки",
+    title: "Прогнозирование акций ПАО «Сбербанк»",
     description: "Современный стек React для продуктивной разработки",
     url: "http://localhost:3000",
     siteName: "Code Scaffold",
@@ -36,7 +36,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Шаблон Next.js для ИИ-разработки",
+    title: "Прогнозирование акций ПАО «Сбербанк»",
     description: "Современный стек React для продуктивной разработки",
   },
 };

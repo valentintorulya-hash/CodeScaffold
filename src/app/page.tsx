@@ -21,7 +21,7 @@ import { Separator } from '@/components/ui/separator';
 import { BeamsBackground } from '@/components/ui/beams-background';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  AreaChart, Area, BarChart, Bar, ComposedChart, ReferenceLine, Brush
+  AreaChart, Area, BarChart, Bar, ComposedChart, ReferenceLine
 } from 'recharts';
 import { 
   Activity, TrendingUp, TrendingDown, BarChart3, Brain, Settings, 
@@ -37,6 +37,14 @@ import {
   type StationarityResult,
   type FutureForecastResult,
 } from '@/lib/ml-api';
+import {
+  chartDomainWithPadding,
+  createInitialWindow,
+  normalizeWindow,
+  type ChartWindow,
+  DEFAULT_CHART_WINDOW,
+} from '@/lib/chart-utils';
+import { ChartScrollbar } from '@/components/ui/chart-scrollbar';
 
 // Цветовая палитра для графиков
 const COLORS = {
@@ -62,17 +70,6 @@ const CHART_TICK = { fontSize: 10, fill: '#cbd5e1' };
 const CHART_TICK_SMALL = { fontSize: 8, fill: '#cbd5e1' };
 const CHART_AXIS = '#64748b';
 const LEGEND_STYLE = { color: '#e2e8f0' };
-const chartDomainWithPadding = ([dataMin, dataMax]: [number, number]): [number, number] => {
-  const safeMin = Number.isFinite(dataMin) ? dataMin : 0;
-  const safeMax = Number.isFinite(dataMax) ? dataMax : safeMin + 1;
-
-  if (safeMin === safeMax) {
-    const pad = Math.max(Math.abs(safeMin) * 0.02, 1);
-    return [safeMin - pad, safeMax + pad];
-  }
-
-  return [Math.floor(safeMin * 0.98), Math.ceil(safeMax * 1.02)];
-};
 
 const legendFormatter = (value: string) => (
   <span style={{ color: '#e2e8f0' }}>{value}</span>
@@ -86,33 +83,9 @@ interface PricePoint {
   avg_price: number;
 }
 
-interface ChartWindow {
-  startIndex: number;
-  endIndex: number;
-}
-
 type PanChartKey = 'forecast' | 'analysis' | 'future';
 
-const DEFAULT_CHART_WINDOW = 90;
 const PAN_SENSITIVITY = 1.2;
-
-const createInitialWindow = (dataLength: number): ChartWindow | null => {
-  if (dataLength <= 0) return null;
-  const visiblePoints = Math.min(DEFAULT_CHART_WINDOW, dataLength);
-  return {
-    startIndex: dataLength - visiblePoints,
-    endIndex: dataLength - 1,
-  };
-};
-
-const normalizeWindow = (window: ChartWindow, dataLength: number): ChartWindow | null => {
-  if (dataLength <= 0) return null;
-
-  const start = Math.max(0, Math.min(window.startIndex, dataLength - 1));
-  const end = Math.max(start, Math.min(window.endIndex, dataLength - 1));
-
-  return { startIndex: start, endIndex: end };
-};
 
 interface PersistedAnalysisSnapshot {
   version: 1;
@@ -367,30 +340,49 @@ export default function Dashboard() {
     setFutureWindow(window);
   }, []);
 
-  const handleBrushChange = useCallback(
-    (chartKey: PanChartKey, dataLength: number) =>
-      (range: { startIndex?: number; endIndex?: number } | null) => {
-        if (!range) return;
-        if (typeof range.startIndex !== 'number' || typeof range.endIndex !== 'number') return;
+  const setChartRange = useCallback((chartKey: PanChartKey, days: number | 'all', dataLength: number) => {
+    if (dataLength <= 0) return;
+    
+    let window: ChartWindow;
+    if (days === 'all') {
+      window = { startIndex: 0, endIndex: dataLength - 1 };
+    } else {
+      window = {
+        startIndex: Math.max(0, dataLength - days),
+        endIndex: dataLength - 1
+      };
+    }
+    applyWindowByChart(chartKey, window);
+  }, [applyWindowByChart]);
 
-        const nextWindow = normalizeWindow(
-          { startIndex: range.startIndex, endIndex: range.endIndex },
-          dataLength
-        );
+  const RangeSelector = useCallback(({ chartKey, dataLength }: { chartKey: PanChartKey, dataLength: number }) => (
+    <div className="flex gap-1 mb-4">
+      <Button variant="outline" size="sm" onClick={() => setChartRange(chartKey, 7, dataLength)} className="h-7 text-xs bg-slate-800 border-slate-600 hover:bg-slate-700">1Н</Button>
+      <Button variant="outline" size="sm" onClick={() => setChartRange(chartKey, 30, dataLength)} className="h-7 text-xs bg-slate-800 border-slate-600 hover:bg-slate-700">1М</Button>
+      <Button variant="outline" size="sm" onClick={() => setChartRange(chartKey, 90, dataLength)} className="h-7 text-xs bg-slate-800 border-slate-600 hover:bg-slate-700">3М</Button>
+      <Button variant="outline" size="sm" onClick={() => setChartRange(chartKey, 180, dataLength)} className="h-7 text-xs bg-slate-800 border-slate-600 hover:bg-slate-700">6М</Button>
+      <Button variant="outline" size="sm" onClick={() => setChartRange(chartKey, 365, dataLength)} className="h-7 text-xs bg-slate-800 border-slate-600 hover:bg-slate-700">1Г</Button>
+      <Button variant="outline" size="sm" onClick={() => setChartRange(chartKey, 'all', dataLength)} className="h-7 text-xs bg-slate-800 border-slate-600 hover:bg-slate-700">Все</Button>
+    </div>
+  ), [setChartRange]);
 
-        if (!nextWindow) return;
-        applyWindowByChart(chartKey, nextWindow);
-      },
+  const handleScrollbarChange = useCallback(
+    (chartKey: PanChartKey) => (window: { startIndex: number; endIndex: number }) => {
+      applyWindowByChart(chartKey, window);
+    },
     [applyWindowByChart]
   );
 
   const startChartPan = useCallback(
     (
       chartKey: PanChartKey,
-      event: ReactMouseEvent<HTMLDivElement> | ReactPointerEvent<HTMLDivElement>,
+      event: ReactPointerEvent<HTMLDivElement>,
       currentWindow: ChartWindow | null,
       dataLength: number
     ) => {
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+
       const activeWindow = chartWindowsRef.current[chartKey] ?? currentWindow;
       if (!activeWindow || dataLength <= 1) return;
 
@@ -411,7 +403,7 @@ export default function Dashboard() {
     []
   );
 
-  const stopChartPan = useCallback(() => {
+  const stopChartPan = useCallback((event?: any) => {
     const panState = panStateRef.current;
     if (panState && panState.frameId !== null) {
       window.cancelAnimationFrame(panState.frameId);
@@ -421,10 +413,11 @@ export default function Dashboard() {
   }, []);
 
   const moveChartPan = useCallback(
-    (event: MouseEvent) => {
+    (event: PointerEvent) => {
       const panState = panStateRef.current;
       if (!panState) return;
-
+      
+      event.preventDefault();
       panState.currentX = event.clientX;
       if (panState.frameId !== null) return;
 
@@ -511,6 +504,21 @@ export default function Dashboard() {
     [forecastChartData, futureContextData, futureForecast]
   );
 
+  const visibleForecastData = useMemo(() => {
+    if (!forecastWindow) return forecastChartData;
+    return forecastChartData.slice(forecastWindow.startIndex, forecastWindow.endIndex + 1);
+  }, [forecastChartData, forecastWindow]);
+
+  const visiblePriceData = useMemo(() => {
+    if (!analysisWindow) return priceData;
+    return priceData.slice(analysisWindow.startIndex, analysisWindow.endIndex + 1);
+  }, [priceData, analysisWindow]);
+
+  const visibleFutureData = useMemo(() => {
+    if (!futureWindow) return futureChartData;
+    return futureChartData.slice(futureWindow.startIndex, futureWindow.endIndex + 1);
+  }, [futureChartData, futureWindow]);
+
   const modelErrors = useMemo(() => {
     if (!predictions) return null;
 
@@ -555,13 +563,15 @@ export default function Dashboard() {
   }, [futureWindow]);
 
   useEffect(() => {
-    window.addEventListener('mousemove', moveChartPan);
-    window.addEventListener('mouseup', stopChartPan);
+    window.addEventListener('pointermove', moveChartPan);
+    window.addEventListener('pointerup', stopChartPan);
+    window.addEventListener('pointercancel', stopChartPan);
     window.addEventListener('blur', stopChartPan);
 
     return () => {
-      window.removeEventListener('mousemove', moveChartPan);
-      window.removeEventListener('mouseup', stopChartPan);
+      window.removeEventListener('pointermove', moveChartPan);
+      window.removeEventListener('pointerup', stopChartPan);
+      window.removeEventListener('pointercancel', stopChartPan);
       window.removeEventListener('blur', stopChartPan);
     };
   }, [moveChartPan, stopChartPan]);
@@ -803,16 +813,18 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent>
                 {forecastChartData.length > 0 ? (
-                  <div
+                  <>
+                    <RangeSelector chartKey="forecast" dataLength={forecastChartData.length} />
+                    <div
                     className="h-[400px] cursor-grab select-none active:cursor-grabbing"
                     role="application"
                     onPointerDown={(event) =>
                       startChartPan('forecast', event, forecastWindow, forecastChartData.length)
                     }
-                    onMouseLeave={stopChartPan}
+                    onPointerLeave={stopChartPan}
                   >
                     <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={forecastChartData}>
+                      <ComposedChart data={visibleForecastData}>
                         <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
                         <XAxis 
                           dataKey="date" 
@@ -863,19 +875,16 @@ export default function Dashboard() {
                           dot={false}
                           name="Гибридная"
                         />
-                        <Brush
-                          dataKey="date"
-                          height={24}
-                          stroke={COLORS.hybrid}
-                          travellerWidth={8}
-                          startIndex={forecastWindow?.startIndex}
-                          endIndex={forecastWindow?.endIndex}
-                          onChange={handleBrushChange('forecast', forecastChartData.length)}
-                          tickFormatter={() => ''}
-                        />
                       </ComposedChart>
                     </ResponsiveContainer>
                   </div>
+                  <ChartScrollbar
+                    totalCount={forecastChartData.length}
+                    window={forecastWindow}
+                    onChange={handleScrollbarChange('forecast')}
+                    className="mt-2"
+                  />
+                  </>
                 ) : (
                   <div className="h-[400px] flex items-center justify-center text-slate-400">
                     Запустите анализ для получения прогнозов
@@ -1034,16 +1043,18 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent>
                 {priceData.length > 0 ? (
-                  <div
+                  <>
+                    <RangeSelector chartKey="analysis" dataLength={priceData.length} />
+                    <div
                     className="h-[350px] cursor-grab select-none active:cursor-grabbing"
                     role="application"
                     onPointerDown={(event) =>
                       startChartPan('analysis', event, analysisWindow, priceData.length)
                     }
-                    onMouseLeave={stopChartPan}
+                    onPointerLeave={stopChartPan}
                   >
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={priceData}>
+                      <AreaChart data={visiblePriceData}>
                         <defs>
                           <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="5%" stopColor={COLORS.hybrid} stopOpacity={0.3}/>
@@ -1070,19 +1081,16 @@ export default function Dashboard() {
                           fill="url(#colorPrice)"
                           name="Цена закрытия"
                         />
-                        <Brush
-                          dataKey="date"
-                          height={24}
-                          stroke={COLORS.hybrid}
-                          travellerWidth={8}
-                          startIndex={analysisWindow?.startIndex}
-                          endIndex={analysisWindow?.endIndex}
-                          onChange={handleBrushChange('analysis', priceData.length)}
-                          tickFormatter={() => ''}
-                        />
                       </AreaChart>
                     </ResponsiveContainer>
                   </div>
+                  <ChartScrollbar
+                    totalCount={priceData.length}
+                    window={analysisWindow}
+                    onChange={handleScrollbarChange('analysis')}
+                    className="mt-2"
+                  />
+                  </>
                 ) : (
                   <div className="h-[350px] flex items-center justify-center text-slate-400">
                     Запустите анализ для загрузки данных
@@ -1180,6 +1188,7 @@ export default function Dashboard() {
               <CardContent>
                 {futureForecast ? (
                   <>
+                    <RangeSelector chartKey="future" dataLength={futureChartData.length} />
                     <span className="sr-only" data-testid="last-observed-date">
                       {lastObservedDate}
                     </span>
@@ -1187,67 +1196,63 @@ export default function Dashboard() {
                       {forecastStartDate}
                     </span>
                     <div
-                      className="h-[400px] cursor-grab select-none active:cursor-grabbing"
-                      role="application"
-                      onPointerDown={(event) =>
-                        startChartPan('future', event, futureWindow, futureChartData.length)
-                      }
-                      onMouseLeave={stopChartPan}
-                    >
-                      <ResponsiveContainer width="100%" height="100%">
-                        <ComposedChart data={futureChartData}>
-                          <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
-                          <XAxis 
-                            dataKey="date" 
-                            tick={CHART_TICK}
-                            stroke={CHART_AXIS}
-                            angle={-45}
-                            textAnchor="end"
-                            height={80}
-                          />
-                          <YAxis tick={CHART_TICK} stroke={CHART_AXIS} domain={chartDomainWithPadding} />
-                          <Tooltip contentStyle={TOOLTIP_STYLE} isAnimationActive={false} />
-                          <Legend wrapperStyle={LEGEND_STYLE} formatter={legendFormatter} />
-                          <ReferenceLine 
-                            x={lastObservedDate || undefined}
-                            stroke="#94a3b8" 
-                            strokeDasharray="3 3"
-                            label={{ value: 'Сегодня', position: 'top', fontSize: 10 }}
-                          />
-                          <Line 
-                            type="monotone" 
-                            dataKey="actual" 
-                            stroke={COLORS.actual} 
-                            strokeWidth={2}
-                            isAnimationActive={false}
-                            dot={false}
-                            name="Фактические"
-                          />
-                          <Line 
-                            type="monotone" 
-                            dataKey="hybrid" 
-                            stroke={COLORS.hybrid} 
-                            strokeWidth={2}
-                            strokeDasharray="5 5"
-                            isAnimationActive={false}
-                            dot={false}
-                            name="Прогноз"
-                          />
-                          <Brush
-                            dataKey="date"
-                            height={24}
-                            stroke={COLORS.hybrid}
-                            travellerWidth={8}
-                            startIndex={futureWindow?.startIndex}
-                            endIndex={futureWindow?.endIndex}
-                            onChange={handleBrushChange('future', futureChartData.length)}
-                            tickFormatter={() => ''}
-                          />
-                        </ComposedChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </>
-                ) : (
+                        className="h-[400px] cursor-grab select-none active:cursor-grabbing"
+                        role="application"
+                        onPointerDown={(event) =>
+                          startChartPan('future', event, futureWindow, futureChartData.length)
+                        }
+                        onPointerLeave={stopChartPan}
+                      >
+                        <ResponsiveContainer width="100%" height="100%">
+                          <ComposedChart data={visibleFutureData}>
+                            <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                            <XAxis 
+                              dataKey="date" 
+                              tick={CHART_TICK}
+                              stroke={CHART_AXIS}
+                              angle={-45}
+                              textAnchor="end"
+                              height={80}
+                            />
+                            <YAxis tick={CHART_TICK} stroke={CHART_AXIS} domain={chartDomainWithPadding} />
+                            <Tooltip contentStyle={TOOLTIP_STYLE} isAnimationActive={false} />
+                            <Legend wrapperStyle={LEGEND_STYLE} formatter={legendFormatter} />
+                            <ReferenceLine 
+                              x={lastObservedDate || undefined}
+                              stroke="#94a3b8" 
+                              strokeDasharray="3 3"
+                              label={{ value: 'Сегодня', position: 'top', fontSize: 10 }}
+                            />
+                            <Line 
+                              type="monotone" 
+                              dataKey="actual" 
+                              stroke={COLORS.actual} 
+                              strokeWidth={2}
+                              isAnimationActive={false}
+                              dot={false}
+                              name="Фактические"
+                            />
+                            <Line 
+                              type="monotone" 
+                              dataKey="hybrid" 
+                              stroke={COLORS.hybrid} 
+                              strokeWidth={2}
+                              strokeDasharray="5 5"
+                              isAnimationActive={false}
+                              dot={false}
+                              name="Прогноз"
+                            />
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <ChartScrollbar
+                        totalCount={futureChartData.length}
+                        window={futureWindow}
+                        onChange={handleScrollbarChange('future')}
+                        className="mt-2"
+                      />
+                    </>
+                  ) : (
                   <div className="h-[400px] flex items-center justify-center text-slate-400">
                     Сначала запустите анализ, затем нажмите "Прогноз" для получения предсказаний
                   </div>

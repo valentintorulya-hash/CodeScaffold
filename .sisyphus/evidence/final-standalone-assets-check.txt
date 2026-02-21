@@ -1,7 +1,0 @@
-Final checklist standalone assets validation
-root_exists=True
-static_dirs_found=1
-public_dirs_found=1
-sample_static=.next\standalone\Desktop\Copywrighting\Projects\CodeScaffold\.next\static
-sample_public=.next\standalone\Desktop\Copywrighting\Projects\CodeScaffold\public
-assets_present=True
