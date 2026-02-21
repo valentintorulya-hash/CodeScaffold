@@ -4,17 +4,22 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { RefreshCw, Play, AlertCircle, Settings } from 'lucide-react';
+import { RefreshCw, Play, AlertCircle, Settings, Calendar as CalendarIcon } from 'lucide-react';
+import { format } from 'date-fns';
+import { ru } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 interface SettingsViewProps {
   params: {
     startDate: string;
     endDate: string;
-    lookBack: number;
-    lstmUnits1: number;
-    lstmUnits2: number;
-    epochs: number;
-    batchSize: number;
+    lookBack: number | string;
+    lstmUnits1: number | string;
+    lstmUnits2: number | string;
+    epochs: number | string;
+    batchSize: number | string;
   };
   setParams: (params: any) => void;
   handleRunAnalysis: () => void;
@@ -35,8 +40,31 @@ export function SettingsView({
   error,
   serviceStatus,
 }: SettingsViewProps) {
+  const handleNumberChange = (field: string, value: string) => {
+    if (value === '') {
+      setParams({ ...params, [field]: '' });
+      return;
+    }
+    const nextValue = Number.parseInt(value, 10);
+    if (!Number.isNaN(nextValue)) {
+      setParams({ ...params, [field]: nextValue });
+    }
+  };
+
+  const parseDate = (dateStr: string) => {
+    if (!dateStr) return undefined;
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return undefined;
+    return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+  };
+
   return (
     <div className="space-y-4">
+      <style jsx global>{`
+        .custom-inputs input[type="number"] {
+          color-scheme: dark;
+        }
+      `}</style>
       <Card className="border-slate-700/70 bg-slate-900/65 shadow-xl backdrop-blur-md">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 font-serif text-slate-50">
@@ -48,24 +76,58 @@ export function SettingsView({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 [&_label]:text-slate-200 [&_input]:border-slate-500/70 [&_input]:bg-slate-950/40 [&_input]:text-slate-100 [&_input]:placeholder:text-slate-400">
+          <div className="custom-inputs grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 [&_label]:text-slate-200 [&_input]:border-slate-500/70 [&_input]:bg-slate-950/40 [&_input]:text-slate-100 [&_input]:placeholder:text-slate-400">
             <div>
-              <Label htmlFor="startDate">Начальная дата</Label>
-              <Input
-                id="startDate"
-                type="date"
-                value={params.startDate}
-                onChange={(e) => setParams({ ...params, startDate: e.target.value })}
-              />
+              <Label htmlFor="startDate" className="mb-2 block">Начальная дата</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    id="startDate"
+                    variant={"outline"}
+                    className={cn(
+                      "w-full justify-start text-left font-normal bg-slate-950/40 border-slate-500/70 text-slate-100 hover:bg-slate-900 hover:text-slate-100",
+                      !params.startDate && "text-slate-400"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4 text-slate-400" />
+                    {params.startDate ? format(parseDate(params.startDate)!, "PPP", { locale: ru }) : <span>Выберите дату</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0 border-slate-700 bg-slate-950" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={parseDate(params.startDate)}
+                    onSelect={(date) => setParams({ ...params, startDate: date ? format(date, 'yyyy-MM-dd') : '' })}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
             <div>
-              <Label htmlFor="endDate">Конечная дата</Label>
-              <Input
-                id="endDate"
-                type="date"
-                value={params.endDate}
-                onChange={(e) => setParams({ ...params, endDate: e.target.value })}
-              />
+              <Label htmlFor="endDate" className="mb-2 block">Конечная дата</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    id="endDate"
+                    variant={"outline"}
+                    className={cn(
+                      "w-full justify-start text-left font-normal bg-slate-950/40 border-slate-500/70 text-slate-100 hover:bg-slate-900 hover:text-slate-100",
+                      !params.endDate && "text-slate-400"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4 text-slate-400" />
+                    {params.endDate ? format(parseDate(params.endDate)!, "PPP", { locale: ru }) : <span>Выберите дату</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0 border-slate-700 bg-slate-950" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={parseDate(params.endDate)}
+                    onSelect={(date) => setParams({ ...params, endDate: date ? format(date, 'yyyy-MM-dd') : '' })}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
             <div>
               <Label htmlFor="lookBack">Размер окна (дней)</Label>
@@ -73,37 +135,25 @@ export function SettingsView({
                 id="lookBack"
                 type="number"
                 value={params.lookBack}
-                onChange={(e) => {
-                  const nextValue = Number.parseInt(e.target.value, 10);
-                  if (Number.isNaN(nextValue)) return;
-                  setParams({ ...params, lookBack: nextValue });
-                }}
+                onChange={(e) => handleNumberChange('lookBack', e.target.value)}
               />
             </div>
             <div>
-              <Label htmlFor="lstmUnits1">LSTM слои (1)</Label>
+              <Label htmlFor="lstmUnits1">Размер 1-го слоя LSTM</Label>
               <Input
                 id="lstmUnits1"
                 type="number"
                 value={params.lstmUnits1}
-                onChange={(e) => {
-                  const nextValue = Number.parseInt(e.target.value, 10);
-                  if (Number.isNaN(nextValue)) return;
-                  setParams({ ...params, lstmUnits1: nextValue });
-                }}
+                onChange={(e) => handleNumberChange('lstmUnits1', e.target.value)}
               />
             </div>
             <div>
-              <Label htmlFor="lstmUnits2">LSTM слои (2)</Label>
+              <Label htmlFor="lstmUnits2">Размер 2-го слоя LSTM</Label>
               <Input
                 id="lstmUnits2"
                 type="number"
                 value={params.lstmUnits2}
-                onChange={(e) => {
-                  const nextValue = Number.parseInt(e.target.value, 10);
-                  if (Number.isNaN(nextValue)) return;
-                  setParams({ ...params, lstmUnits2: nextValue });
-                }}
+                onChange={(e) => handleNumberChange('lstmUnits2', e.target.value)}
               />
             </div>
             <div>
@@ -112,11 +162,7 @@ export function SettingsView({
                 id="epochs"
                 type="number"
                 value={params.epochs}
-                onChange={(e) => {
-                  const nextValue = Number.parseInt(e.target.value, 10);
-                  if (Number.isNaN(nextValue)) return;
-                  setParams({ ...params, epochs: nextValue });
-                }}
+                onChange={(e) => handleNumberChange('epochs', e.target.value)}
               />
             </div>
             <div>
@@ -125,11 +171,7 @@ export function SettingsView({
                 id="batchSize"
                 type="number"
                 value={params.batchSize}
-                onChange={(e) => {
-                  const nextValue = Number.parseInt(e.target.value, 10);
-                  if (Number.isNaN(nextValue)) return;
-                  setParams({ ...params, batchSize: nextValue });
-                }}
+                onChange={(e) => handleNumberChange('batchSize', e.target.value)}
               />
             </div>
             <div className="flex items-end col-span-1 md:col-span-2 lg:col-span-1">

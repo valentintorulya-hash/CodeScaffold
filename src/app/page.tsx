@@ -232,10 +232,10 @@ export default function Dashboard() {
       const result = await runFullAnalysis({
         start_date: params.startDate || undefined,
         end_date: params.endDate || undefined,
-        look_back: params.lookBack,
-        lstm_units: [params.lstmUnits1, params.lstmUnits2],
-        epochs: params.epochs,
-        batch_size: params.batchSize,
+        look_back: Number(params.lookBack) || 60,
+        lstm_units: [Number(params.lstmUnits1) || 50, Number(params.lstmUnits2) || 50],
+        epochs: Number(params.epochs) || 50,
+        batch_size: Number(params.batchSize) || 32,
       });
 
       setProgress(80);
