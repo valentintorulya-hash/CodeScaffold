@@ -6,27 +6,29 @@ import {
   useCallback,
   useMemo,
   useRef,
-  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { BeamsBackground } from '@/components/ui/beams-background';
 import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  AreaChart, Area, BarChart, Bar, ComposedChart, ReferenceLine
-} from 'recharts';
-import { 
-  Activity, TrendingUp, TrendingDown, BarChart3, Brain, Settings, 
-  Play, RefreshCw, AlertCircle, CheckCircle2, Clock, Zap
+  CheckCircle2, AlertCircle, TrendingUp, Brain
 } from 'lucide-react';
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar"
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb"
+import { AppSidebar } from "@/components/app-sidebar"
+
 import {
   runFullAnalysis,
   forecastFuture,
@@ -38,70 +40,33 @@ import {
   type FutureForecastResult,
 } from '@/lib/ml-api';
 import {
-  chartDomainWithPadding,
   createInitialWindow,
-  normalizeWindow,
   type ChartWindow,
-  DEFAULT_CHART_WINDOW,
 } from '@/lib/chart-utils';
-import { ChartScrollbar } from '@/components/ui/chart-scrollbar';
+import { PanChartKey, PricePoint, DashboardState } from '@/lib/dashboard-types';
 
-// Цветовая палитра для графиков
-const COLORS = {
-  actual: '#cbd5e1',
-  arima: '#60a5fa',
-  lstm: '#22d3ee',
-  hybrid: '#f59e0b',
-  forecast: '#fbbf24',
-  confidence: 'rgba(245, 158, 11, 0.22)',
-};
-
-const CHART_GRID = 'rgba(148, 163, 184, 0.2)';
-
-const TOOLTIP_STYLE = {
-  backgroundColor: 'rgba(15, 23, 42, 0.92)',
-  border: '1px solid rgba(148, 163, 184, 0.35)',
-  borderRadius: '10px',
-  color: '#e2e8f0',
-  backdropFilter: 'blur(8px)',
-};
-
-const CHART_TICK = { fontSize: 10, fill: '#cbd5e1' };
-const CHART_TICK_SMALL = { fontSize: 8, fill: '#cbd5e1' };
-const CHART_AXIS = '#64748b';
-const LEGEND_STYLE = { color: '#e2e8f0' };
-
-const legendFormatter = (value: string) => (
-  <span style={{ color: '#e2e8f0' }}>{value}</span>
-);
+// Views
+import { SettingsView } from '@/components/dashboard/settings-view';
+import { ForecastView } from '@/components/dashboard/forecast-view';
+import { AnalysisView } from '@/components/dashboard/analysis-view';
+import { ComparisonView } from '@/components/dashboard/comparison-view';
+import { FutureView } from '@/components/dashboard/future-view';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 const ANALYSIS_SNAPSHOT_KEY = 'dashboard-analysis-snapshot:v1';
-
-interface PricePoint {
-  date: string;
-  close: number;
-  avg_price: number;
-}
-
-type PanChartKey = 'forecast' | 'analysis' | 'future';
-
 const PAN_SENSITIVITY = 1.2;
 
-interface PersistedAnalysisSnapshot {
+interface PersistedAnalysisSnapshot extends DashboardState {
   version: 1;
-  dataInfo: DataInfo | null;
-  priceData: PricePoint[];
-  predictions: Predictions | null;
-  metrics: ModelMetrics[];
-  bestModel: string;
-  stationarity: StationarityResult | null;
-  futureForecast: FutureForecastResult | null;
   progress: number;
   status: string;
 }
 
 export default function Dashboard() {
-  // Состояние данных
+  // Navigation State
+  const [activeView, setActiveView] = useState('forecast');
+
+  // App State
   const [isLoading, setIsLoading] = useState(false);
   const [isForecastLoading, setIsForecastLoading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -110,7 +75,7 @@ export default function Dashboard() {
   const [serviceStatus, setServiceStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const [isSnapshotReady, setIsSnapshotReady] = useState(false);
 
-  // Данные
+  // Data State
   const [dataInfo, setDataInfo] = useState<DataInfo | null>(null);
   const [priceData, setPriceData] = useState<PricePoint[]>([]);
   const [predictions, setPredictions] = useState<Predictions | null>(null);
@@ -118,6 +83,8 @@ export default function Dashboard() {
   const [bestModel, setBestModel] = useState<string>('');
   const [stationarity, setStationarity] = useState<StationarityResult | null>(null);
   const [futureForecast, setFutureForecast] = useState<FutureForecastResult | null>(null);
+  
+  // Windows
   const [forecastWindow, setForecastWindow] = useState<ChartWindow | null>(null);
   const [analysisWindow, setAnalysisWindow] = useState<ChartWindow | null>(null);
   const [futureWindow, setFutureWindow] = useState<ChartWindow | null>(null);
@@ -139,7 +106,7 @@ export default function Dashboard() {
     fractionalShift: number;
   } | null>(null);
 
-  // Параметры модели
+  // Model Params
   const [params, setParams] = useState({
     startDate: '2021-01-01',
     endDate: '',
@@ -150,6 +117,7 @@ export default function Dashboard() {
     batchSize: 32,
   });
 
+  // Restore Snapshot
   useEffect(() => {
     try {
       const rawSnapshot = window.localStorage.getItem(ANALYSIS_SNAPSHOT_KEY);
@@ -170,6 +138,11 @@ export default function Dashboard() {
       setFutureForecast(snapshot.futureForecast);
       setProgress(snapshot.progress);
       setStatus(snapshot.status);
+      
+      // Restore windows if needed, or let effects handle it
+      setForecastWindow(snapshot.forecastWindow);
+      setAnalysisWindow(snapshot.analysisWindow);
+      setFutureWindow(snapshot.futureWindow);
     } catch {
       window.localStorage.removeItem(ANALYSIS_SNAPSHOT_KEY);
     } finally {
@@ -177,6 +150,7 @@ export default function Dashboard() {
     }
   }, []);
 
+  // Save Snapshot
   useEffect(() => {
     if (!isSnapshotReady || isLoading) return;
 
@@ -191,7 +165,6 @@ export default function Dashboard() {
 
     if (!hasAnalysisData) return;
 
-    // Debounce localStorage writes — coalesce rapid state updates into one write
     const timeoutId = setTimeout(() => {
       const snapshot: PersistedAnalysisSnapshot = {
         version: 1,
@@ -202,6 +175,9 @@ export default function Dashboard() {
         bestModel,
         stationarity,
         futureForecast,
+        forecastWindow,
+        analysisWindow,
+        futureWindow,
         progress,
         status,
       };
@@ -211,20 +187,12 @@ export default function Dashboard() {
 
     return () => clearTimeout(timeoutId);
   }, [
-    bestModel,
-    dataInfo,
-    futureForecast,
-    isLoading,
-    isSnapshotReady,
-    metrics,
-    predictions,
-    priceData,
-    progress,
-    stationarity,
-    status,
+    bestModel, dataInfo, futureForecast, isLoading, isSnapshotReady, metrics,
+    predictions, priceData, progress, stationarity, status,
+    forecastWindow, analysisWindow, futureWindow
   ]);
 
-  // Проверка статуса сервиса
+  // Health Check
   useEffect(() => {
     const checkHealth = async () => {
       try {
@@ -239,7 +207,7 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  // Запуск полного анализа
+  // Run Analysis
   const handleRunAnalysis = useCallback(async () => {
     setIsLoading(true);
     setIsForecastLoading(false);
@@ -277,13 +245,9 @@ export default function Dashboard() {
         setDataInfo(result.data_info);
         setMetrics(result.comparison_table);
         setBestModel(result.best_model);
-
-        // Analysis data comes from the consolidated response.
-        // Future forecast is requested on-demand via the "Прогноз" button.
         setPredictions(result.predictions);
         setStationarity(result.stationarity);
 
-        // Build chart data from consolidated dates/close/avg_price
         if (result.dates && result.close) {
           const chartData = result.dates.map((date: string, i: number) => ({
             date: date.slice(0, 10),
@@ -294,7 +258,10 @@ export default function Dashboard() {
         }
 
         setProgress(100);
-        setStatus('Анализ завершён! Для прогноза на будущее нажмите «Прогноз».');
+        setStatus('Анализ завершён! Для прогноза на будущее перейдите в раздел «Прогноз на будущее».');
+        
+        // Auto-switch to Forecast view
+        setActiveView('forecast');
       } else {
         throw new Error(result.error || 'Неизвестная ошибка');
       }
@@ -306,7 +273,7 @@ export default function Dashboard() {
     }
   }, [params]);
 
-  // Прогноз на будущее
+  // Future Forecast
   const handleForecastFuture = useCallback(async () => {
     if (!predictions) return;
 
@@ -324,6 +291,7 @@ export default function Dashboard() {
     }
   }, [predictions]);
 
+  // Chart Logic
   const applyWindowByChart = useCallback((chartKey: PanChartKey, window: ChartWindow) => {
     chartWindowsRef.current[chartKey] = window;
 
@@ -331,12 +299,10 @@ export default function Dashboard() {
       setForecastWindow(window);
       return;
     }
-
     if (chartKey === 'analysis') {
       setAnalysisWindow(window);
       return;
     }
-
     setFutureWindow(window);
   }, []);
 
@@ -354,17 +320,6 @@ export default function Dashboard() {
     }
     applyWindowByChart(chartKey, window);
   }, [applyWindowByChart]);
-
-  const RangeSelector = useCallback(({ chartKey, dataLength }: { chartKey: PanChartKey, dataLength: number }) => (
-    <div className="flex gap-1 mb-4">
-      <Button variant="outline" size="sm" onClick={() => setChartRange(chartKey, 7, dataLength)} className="h-7 text-xs bg-slate-800 border-slate-600 hover:bg-slate-700">1Н</Button>
-      <Button variant="outline" size="sm" onClick={() => setChartRange(chartKey, 30, dataLength)} className="h-7 text-xs bg-slate-800 border-slate-600 hover:bg-slate-700">1М</Button>
-      <Button variant="outline" size="sm" onClick={() => setChartRange(chartKey, 90, dataLength)} className="h-7 text-xs bg-slate-800 border-slate-600 hover:bg-slate-700">3М</Button>
-      <Button variant="outline" size="sm" onClick={() => setChartRange(chartKey, 180, dataLength)} className="h-7 text-xs bg-slate-800 border-slate-600 hover:bg-slate-700">6М</Button>
-      <Button variant="outline" size="sm" onClick={() => setChartRange(chartKey, 365, dataLength)} className="h-7 text-xs bg-slate-800 border-slate-600 hover:bg-slate-700">1Г</Button>
-      <Button variant="outline" size="sm" onClick={() => setChartRange(chartKey, 'all', dataLength)} className="h-7 text-xs bg-slate-800 border-slate-600 hover:bg-slate-700">Все</Button>
-    </div>
-  ), [setChartRange]);
 
   const handleScrollbarChange = useCallback(
     (chartKey: PanChartKey) => (window: { startIndex: number; endIndex: number }) => {
@@ -403,12 +358,11 @@ export default function Dashboard() {
     []
   );
 
-  const stopChartPan = useCallback((event?: any) => {
+  const stopChartPan = useCallback(() => {
     const panState = panStateRef.current;
     if (panState && panState.frameId !== null) {
       window.cancelAnimationFrame(panState.frameId);
     }
-
     panStateRef.current = null;
   }, []);
 
@@ -437,9 +391,7 @@ export default function Dashboard() {
         activePanState.lastX = activePanState.currentX;
         activePanState.fractionalShift = shiftFloat - shift;
 
-        if (shift === 0) {
-          return;
-        }
+        if (shift === 0) return;
 
         const maxStart = activePanState.dataLength - visiblePoints;
         const nextStart = Math.max(0, Math.min(currentWindow.startIndex - shift, maxStart));
@@ -461,7 +413,21 @@ export default function Dashboard() {
     [applyWindowByChart]
   );
 
-  // Подготовка данных для графика прогнозов
+  useEffect(() => {
+    window.addEventListener('pointermove', moveChartPan);
+    window.addEventListener('pointerup', stopChartPan);
+    window.addEventListener('pointercancel', stopChartPan);
+    window.addEventListener('blur', stopChartPan);
+
+    return () => {
+      window.removeEventListener('pointermove', moveChartPan);
+      window.removeEventListener('pointerup', stopChartPan);
+      window.removeEventListener('pointercancel', stopChartPan);
+      window.removeEventListener('blur', stopChartPan);
+    };
+  }, [moveChartPan, stopChartPan]);
+
+  // Prepare Data for Views
   const forecastChartData = useMemo(
     () =>
       predictions
@@ -488,7 +454,6 @@ export default function Dashboard() {
   const lastObservedDate = futureContextData[futureContextData.length - 1]?.date ?? '';
   const forecastStartDate = futureForecast?.dates[0]?.slice(0, 10) ?? '';
 
-  // Подготовка данных для прогноза на будущее
   const futureChartData = useMemo(
     () =>
       futureForecast
@@ -503,6 +468,25 @@ export default function Dashboard() {
         : forecastChartData,
     [forecastChartData, futureContextData, futureForecast]
   );
+
+  // Initialize Windows
+  useEffect(() => {
+    if (!forecastWindow && forecastChartData.length > 0) {
+        setForecastWindow(createInitialWindow(forecastChartData.length));
+    }
+  }, [forecastChartData.length, forecastWindow]);
+
+  useEffect(() => {
+    if (!analysisWindow && priceData.length > 0) {
+        setAnalysisWindow(createInitialWindow(priceData.length));
+    }
+  }, [priceData.length, analysisWindow]);
+
+  useEffect(() => {
+    if (!futureWindow && futureChartData.length > 0) {
+        setFutureWindow(createInitialWindow(futureChartData.length));
+    }
+  }, [futureChartData.length, futureWindow]);
 
   const visibleForecastData = useMemo(() => {
     if (!forecastWindow) return forecastChartData;
@@ -521,7 +505,6 @@ export default function Dashboard() {
 
   const modelErrors = useMemo(() => {
     if (!predictions) return null;
-
     return {
       arima: predictions.dates.map((date, i) => ({
         date: date.slice(0, 10),
@@ -538,815 +521,187 @@ export default function Dashboard() {
     };
   }, [predictions]);
 
-  useEffect(() => {
-    setForecastWindow(createInitialWindow(forecastChartData.length));
-  }, [forecastChartData.length]);
-
-  useEffect(() => {
-    setAnalysisWindow(createInitialWindow(priceData.length));
-  }, [priceData.length]);
-
-  useEffect(() => {
-    setFutureWindow(createInitialWindow(futureChartData.length));
-  }, [futureChartData.length]);
-
-  useEffect(() => {
-    chartWindowsRef.current.forecast = forecastWindow;
-  }, [forecastWindow]);
-
-  useEffect(() => {
-    chartWindowsRef.current.analysis = analysisWindow;
-  }, [analysisWindow]);
-
-  useEffect(() => {
-    chartWindowsRef.current.future = futureWindow;
-  }, [futureWindow]);
-
-  useEffect(() => {
-    window.addEventListener('pointermove', moveChartPan);
-    window.addEventListener('pointerup', stopChartPan);
-    window.addEventListener('pointercancel', stopChartPan);
-    window.addEventListener('blur', stopChartPan);
-
-    return () => {
-      window.removeEventListener('pointermove', moveChartPan);
-      window.removeEventListener('pointerup', stopChartPan);
-      window.removeEventListener('pointercancel', stopChartPan);
-      window.removeEventListener('blur', stopChartPan);
-    };
-  }, [moveChartPan, stopChartPan]);
+  // Title Mapping
+  const getTitle = () => {
+    switch (activeView) {
+      case 'forecast': return 'Прогнозы';
+      case 'analysis': return 'Анализ данных';
+      case 'comparison': return 'Сравнение моделей';
+      case 'future': return 'Прогноз на будущее';
+      case 'settings': return 'Настройки';
+      default: return 'Дашборд';
+    }
+  };
 
   return (
-    <div className="dashboard-shell relative min-h-screen overflow-hidden bg-slate-950 text-slate-100">
-      <BeamsBackground />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.18),transparent_48%)]" />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_90%_15%,rgba(245,158,11,0.16),transparent_42%)]" />
-
-      {/* Шапка */}
-      <header className="sticky top-0 z-50 border-b border-slate-700/70 bg-slate-950/70 backdrop-blur-md">
-        <div className="mx-auto max-w-7xl px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 p-2.5 shadow-[0_0_32px_rgba(245,158,11,0.35)]">
-                <TrendingUp className="h-6 w-6 text-slate-950" />
-              </div>
-              <div>
-                <h1 className="font-serif text-2xl font-normal text-slate-50 md:text-3xl">
-                  Гибридная модель ARIMA-LSTM
-                </h1>
-                <p className="text-sm text-slate-300">
-                  Прогнозирование акций ПАО «Сбербанк» (SBER)
-                </p>
-              </div>
+    <SidebarProvider>
+      <AppSidebar activeView={activeView} onViewChange={setActiveView} />
+      <SidebarInset className="bg-slate-950">
+        <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12 border-b border-slate-800 bg-slate-950/80 backdrop-blur-xl supports-[backdrop-filter]:bg-slate-950/60 sticky top-0 z-50">
+          <div className="flex items-center gap-2 px-4 w-full justify-between">
+            <div className="flex items-center gap-2">
+              <SidebarTrigger className="-ml-1 text-slate-400 hover:text-slate-50 hover:bg-slate-800 transition-colors duration-200" />
+              <Separator orientation="vertical" className="mr-2 h-4 bg-slate-700" />
+              <Breadcrumb>
+                <BreadcrumbList>
+                  <BreadcrumbItem className="hidden md:block">
+                    <BreadcrumbLink 
+                      href="#" 
+                      onClick={() => setActiveView('forecast')} 
+                      className="text-slate-400 hover:text-amber-400 transition-colors duration-200 font-medium"
+                    >
+                      Прогноз СБЕР
+                    </BreadcrumbLink>
+                  </BreadcrumbItem>
+                  <BreadcrumbSeparator className="hidden md:block text-slate-600" />
+                  <BreadcrumbItem>
+                    <BreadcrumbPage className="text-slate-100 font-semibold tracking-tight">{getTitle()}</BreadcrumbPage>
+                  </BreadcrumbItem>
+                </BreadcrumbList>
+              </Breadcrumb>
             </div>
+            
             <div className="flex items-center gap-4">
               <Badge 
-                variant={serviceStatus === 'online' ? 'default' : 'destructive'}
-                className="flex items-center gap-1 border border-slate-500/70 bg-slate-900/80 text-slate-100"
+                variant="outline"
+                className={`
+                  flex items-center gap-1.5 border px-3 py-1 transition-all duration-300
+                  ${serviceStatus === 'online' 
+                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.1)]' 
+                    : 'border-rose-500/30 bg-rose-500/10 text-rose-400'}
+                `}
               >
                 {serviceStatus === 'online' ? (
                   <>
-                    <CheckCircle2 className="h-3 w-3" />
-                    ML-сервис онлайн
+                    <div className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </div>
+                    <span className="hidden sm:inline font-medium text-xs tracking-wide uppercase">Онлайн</span>
                   </>
                 ) : (
                   <>
                     <AlertCircle className="h-3 w-3" />
-                    ML-сервис оффлайн
+                    <span className="hidden sm:inline font-medium text-xs tracking-wide uppercase">Оффлайн</span>
                   </>
                 )}
               </Badge>
             </div>
           </div>
-        </div>
-      </header>
-
-      <main className="relative z-10 mx-auto max-w-7xl px-4 py-6">
-        {/* Панель параметров */}
-        <Card className="mb-6 border-slate-700/70 bg-slate-900/65 shadow-xl backdrop-blur-md">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 font-serif text-slate-50">
-              <Settings className="h-5 w-5 text-amber-300" />
-              Параметры анализа
-            </CardTitle>
-            <CardDescription className="text-slate-300">
-              Настройте период данных и гиперпараметры моделей
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-7 [&_label]:text-slate-200 [&_input]:border-slate-500/70 [&_input]:bg-slate-950/40 [&_input]:text-slate-100 [&_input]:placeholder:text-slate-400">
-              <div>
-                <Label htmlFor="startDate">Начальная дата</Label>
-                <Input
-                  id="startDate"
-                  type="date"
-                  value={params.startDate}
-                  onChange={(e) => setParams({ ...params, startDate: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label htmlFor="endDate">Конечная дата</Label>
-                <Input
-                  id="endDate"
-                  type="date"
-                  value={params.endDate}
-                  onChange={(e) => setParams({ ...params, endDate: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label htmlFor="lookBack">Размер окна (дней)</Label>
-                <Input
-                  id="lookBack"
-                  type="number"
-                  value={params.lookBack}
-                  onChange={(e) => {
-                    const nextValue = Number.parseInt(e.target.value, 10);
-                    if (Number.isNaN(nextValue)) return;
-                    setParams({ ...params, lookBack: nextValue });
-                  }}
-                />
-              </div>
-              <div>
-                <Label htmlFor="lstmUnits1">LSTM слои</Label>
-                <Input
-                  id="lstmUnits1"
-                  type="number"
-                  value={params.lstmUnits1}
-                  onChange={(e) => {
-                    const nextValue = Number.parseInt(e.target.value, 10);
-                    if (Number.isNaN(nextValue)) return;
-                    setParams({ ...params, lstmUnits1: nextValue });
-                  }}
-                />
-              </div>
-              <div>
-                <Label htmlFor="epochs">Эпохи</Label>
-                <Input
-                  id="epochs"
-                  type="number"
-                  value={params.epochs}
-                  onChange={(e) => {
-                    const nextValue = Number.parseInt(e.target.value, 10);
-                    if (Number.isNaN(nextValue)) return;
-                    setParams({ ...params, epochs: nextValue });
-                  }}
-                />
-              </div>
-              <div>
-                <Label htmlFor="batchSize">Размер батча</Label>
-                <Input
-                  id="batchSize"
-                  type="number"
-                  value={params.batchSize}
-                  onChange={(e) => {
-                    const nextValue = Number.parseInt(e.target.value, 10);
-                    if (Number.isNaN(nextValue)) return;
-                    setParams({ ...params, batchSize: nextValue });
-                  }}
-                />
-              </div>
-              <div className="flex items-end">
-                <Button 
-                  onClick={handleRunAnalysis}
-                  disabled={isLoading || serviceStatus === 'offline'}
-                  className="w-full bg-amber-500 text-slate-950 hover:bg-amber-400"
-                >
-                  {isLoading ? (
-                    <>
-                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                      Анализ...
-                    </>
-                  ) : (
-                    <>
-                      <Play className="h-4 w-4 mr-2" />
-                      Запустить анализ
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-
-            {isLoading && (
-              <div className="mt-4">
-                <Progress value={progress} className="h-2 bg-slate-800 [&>div]:bg-gradient-to-r [&>div]:from-amber-600 [&>div]:to-amber-400" />
-                <p className="mt-2 text-sm text-slate-300">{status}</p>
-              </div>
+        </header>
+        <div className="flex flex-1 flex-col gap-6 p-6 pt-6 bg-slate-950 min-h-screen relative overflow-hidden">
+          <BeamsBackground />
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.18),transparent_48%)]" />
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_90%_15%,rgba(245,158,11,0.16),transparent_42%)]" />
+          
+          <div className="relative z-10 max-w-7xl w-full mx-auto">
+            {activeView === 'settings' && (
+              <SettingsView 
+                params={params} 
+                setParams={setParams} 
+                handleRunAnalysis={handleRunAnalysis}
+                isLoading={isLoading}
+                progress={progress}
+                status={status}
+                error={error}
+                serviceStatus={serviceStatus}
+              />
             )}
 
-            {error && (
-              <Alert variant="destructive" className="mt-4">
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Ошибка</AlertTitle>
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Информация о данных */}
-        {dataInfo && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <Card className="border-slate-700/70 bg-slate-900/60 backdrop-blur-sm">
-              <CardContent className="pt-4">
-                <div className="flex items-center gap-2">
-                  <BarChart3 className="h-5 w-5 text-amber-300" />
-                  <div>
-                    <p className="text-sm text-slate-300">Всего записей</p>
-                    <p className="text-2xl font-bold">{dataInfo.total_records}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="border-slate-700/70 bg-slate-900/60 backdrop-blur-sm">
-              <CardContent className="pt-4">
-                <div className="flex items-center gap-2">
-                  <Activity className="h-5 w-5 text-cyan-300" />
-                  <div>
-                    <p className="text-sm text-slate-300">Обучающая выборка</p>
-                    <p className="text-2xl font-bold">{dataInfo.train_records}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="border-slate-700/70 bg-slate-900/60 backdrop-blur-sm">
-              <CardContent className="pt-4">
-                <div className="flex items-center gap-2">
-                  <TrendingDown className="h-5 w-5 text-blue-300" />
-                  <div>
-                    <p className="text-sm text-slate-300">Тестовая выборка</p>
-                    <p className="text-2xl font-bold">{dataInfo.test_records}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="border-slate-700/70 bg-slate-900/60 backdrop-blur-sm">
-              <CardContent className="pt-4">
-                <div className="flex items-center gap-2">
-                  <Zap className="h-5 w-5 text-amber-300" />
-                  <div>
-                    <p className="text-sm text-slate-300">Лучшая модель</p>
-                    <p className="text-lg font-bold text-amber-300">{bestModel || '—'}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
-        {/* Табы с результатами */}
-        <Tabs defaultValue="forecast" className="space-y-4">
-          <TabsList className="h-auto w-full grid grid-cols-2 gap-1 overflow-visible border border-slate-700/70 bg-slate-900/65 p-1 backdrop-blur-md md:grid-cols-4">
-            <TabsTrigger value="forecast" className="min-h-9 h-auto whitespace-normal px-2 py-2 text-xs text-slate-200 leading-tight data-[state=active]:bg-amber-500 data-[state=active]:text-slate-950 md:text-sm">Прогнозы</TabsTrigger>
-            <TabsTrigger value="comparison" className="min-h-9 h-auto whitespace-normal px-2 py-2 text-xs text-slate-200 leading-tight data-[state=active]:bg-amber-500 data-[state=active]:text-slate-950 md:text-sm">Сравнение моделей</TabsTrigger>
-            <TabsTrigger value="analysis" className="min-h-9 h-auto whitespace-normal px-2 py-2 text-xs text-slate-200 leading-tight data-[state=active]:bg-amber-500 data-[state=active]:text-slate-950 md:text-sm">Анализ данных</TabsTrigger>
-            <TabsTrigger value="future" className="min-h-9 h-auto whitespace-normal px-2 py-2 text-xs text-slate-200 leading-tight data-[state=active]:bg-amber-500 data-[state=active]:text-slate-950 md:text-sm">Прогноз на будущее</TabsTrigger>
-          </TabsList>
-
-          {/* Таб: Прогнозы */}
-          <TabsContent value="forecast" className="space-y-4">
-            <Card className="border-slate-700/70 bg-slate-900/65 backdrop-blur-md">
-              <CardHeader>
-                <CardTitle className="font-serif text-slate-50">Сравнение прогнозов моделей</CardTitle>
-                <CardDescription className="text-slate-300">
-                  Фактические значения на тестовом периоде vs прогнозы ARIMA, LSTM и гибридной модели
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {forecastChartData.length > 0 ? (
-                  <>
-                    <RangeSelector chartKey="forecast" dataLength={forecastChartData.length} />
-                    <div
-                    className="h-[400px] cursor-grab select-none active:cursor-grabbing"
-                    role="application"
-                    onPointerDown={(event) =>
-                      startChartPan('forecast', event, forecastWindow, forecastChartData.length)
-                    }
-                    onPointerLeave={stopChartPan}
-                  >
-                    <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={visibleForecastData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
-                        <XAxis 
-                          dataKey="date" 
-                          tick={CHART_TICK}
-                          stroke={CHART_AXIS}
-                          angle={-45}
-                          textAnchor="end"
-                          height={80}
-                        />
-                        <YAxis tick={CHART_TICK} stroke={CHART_AXIS} domain={chartDomainWithPadding} />
-                        <Tooltip contentStyle={TOOLTIP_STYLE} isAnimationActive={false} />
-                        <Legend wrapperStyle={LEGEND_STYLE} formatter={legendFormatter} />
-                        <Line 
-                          type="monotone" 
-                          dataKey="actual" 
-                          stroke={COLORS.actual} 
-                          strokeWidth={2}
-                          isAnimationActive={false}
-                          dot={false}
-                          name="Фактические (тест)"
-                        />
-                        <Line 
-                          type="monotone" 
-                          dataKey="arima" 
-                          stroke={COLORS.arima} 
-                          strokeWidth={1.5}
-                          strokeDasharray="5 5"
-                          isAnimationActive={false}
-                          dot={false}
-                          name="ARIMA"
-                        />
-                        <Line 
-                          type="monotone" 
-                          dataKey="lstm" 
-                          stroke={COLORS.lstm} 
-                          strokeWidth={1.5}
-                          strokeDasharray="3 3"
-                          isAnimationActive={false}
-                          dot={false}
-                          name="LSTM"
-                        />
-                        <Line 
-                          type="monotone" 
-                          dataKey="hybrid" 
-                          stroke={COLORS.hybrid} 
-                          strokeWidth={2}
-                          isAnimationActive={false}
-                          dot={false}
-                          name="Гибридная"
-                        />
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <ChartScrollbar
-                    totalCount={forecastChartData.length}
-                    window={forecastWindow}
-                    onChange={handleScrollbarChange('forecast')}
-                    className="mt-2"
-                  />
-                  </>
-                ) : (
-                  <div className="h-[400px] flex items-center justify-center text-slate-400">
-                    Запустите анализ для получения прогнозов
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Ошибки моделей */}
-            {predictions && (
-              <div className="grid md:grid-cols-3 gap-4">
-                {(['arima', 'lstm', 'hybrid'] as const).map((model) => {
-                  const errors = modelErrors?.[model] ?? [];
-                  const modelNames: Record<string, string> = {
-                    arima: 'ARIMA',
-                    lstm: 'LSTM',
-                    hybrid: 'Гибридная'
-                  };
-                  
-                  return (
-                    <Card key={model} className="border-slate-700/70 bg-slate-900/65 backdrop-blur-md">
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm text-slate-50">
-                          Ошибки: {modelNames[model]}
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <ResponsiveContainer width="100%" height={150}>
-                          <BarChart data={errors}>
-                            <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
-                            <XAxis dataKey="date" tick={false} stroke={CHART_AXIS} />
-                            <YAxis tick={CHART_TICK_SMALL} stroke={CHART_AXIS} domain={chartDomainWithPadding} />
-                            <Tooltip contentStyle={TOOLTIP_STYLE} />
-                            <Bar 
-                              dataKey="error" 
-                              fill={model === 'hybrid' ? COLORS.hybrid : model === 'arima' ? COLORS.arima : COLORS.lstm}
-                              opacity={0.7}
-                            />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            )}
-          </TabsContent>
-
-          {/* Таб: Сравнение моделей */}
-          <TabsContent value="comparison" className="space-y-4">
-            {metrics.length > 0 ? (
+            {activeView === 'forecast' && (
               <>
-                {/* Таблица метрик */}
-                <Card className="border-slate-700/70 bg-slate-900/65 backdrop-blur-md">
+                <ForecastView
+                  forecastChartData={forecastChartData}
+                  visibleForecastData={visibleForecastData}
+                  forecastWindow={forecastWindow}
+                  predictions={predictions}
+                  modelErrors={modelErrors}
+                  onRangeSelect={(days) => setChartRange('forecast', days, forecastChartData.length)}
+                  onChartPan={(e, w, l) => startChartPan('forecast', e, w, l)}
+                  onStopPan={stopChartPan}
+                  onScrollbarChange={handleScrollbarChange('forecast')}
+                />
+                
+                {/* Информация о моделях - отображаем только на главной */}
+                <Card className="mt-6 border-slate-700/70 bg-slate-900/65 backdrop-blur-md">
                   <CardHeader>
-                    <CardTitle className="font-serif text-slate-50">Метрики качества моделей</CardTitle>
-                    <CardDescription className="text-slate-300">
-                      Сравнение по MAE, RMSE, MAPE и R²
-                    </CardDescription>
+                    <CardTitle className="flex items-center gap-2 font-serif text-slate-50">
+                      <Brain className="h-5 w-5 text-amber-300" />
+                      О гибридной модели
+                    </CardTitle>
                   </CardHeader>
-                  <CardContent>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm text-slate-100">
-                        <thead>
-                          <tr className="border-b border-slate-700/70">
-                            <th className="py-3 px-4 text-left text-slate-200">Модель</th>
-                            <th className="py-3 px-4 text-right text-slate-200">MAE ↓</th>
-                            <th className="py-3 px-4 text-right text-slate-200">RMSE ↓</th>
-                            <th className="py-3 px-4 text-right text-slate-200">MAPE (%) ↓</th>
-                            <th className="py-3 px-4 text-right text-slate-200">R² ↑</th>
-                            <th className="py-3 px-4 text-right text-slate-200">Время (сек)</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {metrics.map((m) => (
-                            <tr 
-                              key={m.Model} 
-                              className={`border-b border-slate-700/70 ${m.Model === bestModel ? 'bg-amber-500/20' : ''}`}
-                            >
-                              <td className="py-3 px-4 font-medium text-slate-100">
-                                {m.Model}
-                                {m.Model === bestModel && (
-                                  <Badge className="ml-2 bg-amber-500 text-slate-950">Лучшая</Badge>
-                                )}
-                              </td>
-                              <td className="py-3 px-4 text-right text-slate-100">{m.MAE.toFixed(2)}</td>
-                              <td className="py-3 px-4 text-right text-slate-100">{m.RMSE.toFixed(2)}</td>
-                              <td className="py-3 px-4 text-right text-slate-100">{m.MAPE.toFixed(2)}</td>
-                              <td className="py-3 px-4 text-right text-slate-100">{m.R2.toFixed(4)}</td>
-                              <td className="py-3 px-4 text-right text-slate-100">{m['Время (сек)']?.toFixed(1) || '—'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                  <CardContent className="max-w-none text-slate-300">
+                    <div className="grid md:grid-cols-3 gap-6 text-sm">
+                      <div>
+                        <h4 className="mb-2 font-medium text-blue-300">ARIMA</h4>
+                        <p className="text-slate-300">
+                          Моделирует линейную компоненту временного ряда. 
+                          Автоматический подбор параметров (p, d, q) через AIC критерий.
+                        </p>
+                      </div>
+                      <div>
+                        <h4 className="mb-2 font-medium text-cyan-300">LSTM</h4>
+                        <p className="text-slate-300">
+                          Глубокая нейронная сеть для захвата нелинейных паттернов 
+                          в остатках ARIMA. Два LSTM слоя с dropout для регуляризации.
+                        </p>
+                      </div>
+                      <div>
+                        <h4 className="mb-2 font-medium text-amber-300">Гибридная модель</h4>
+                        <p className="text-slate-300">
+                          Комбинирует прогнозы: Final = ARIMA + LSTM(остатки). 
+                          Учитывает как линейные, так и нелинейные зависимости.
+                        </p>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
-
-                {/* Графики метрик */}
-                <div className="grid md:grid-cols-2 gap-4">
-                  <Card className="border-slate-700/70 bg-slate-900/65 backdrop-blur-md">
-                    <CardHeader>
-                      <CardTitle className="text-sm text-slate-50">MAE и RMSE</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <ResponsiveContainer width="100%" height={250}>
-                        <BarChart data={metrics} layout="vertical">
-                          <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
-                          <XAxis type="number" tick={CHART_TICK_SMALL} stroke={CHART_AXIS} />
-                          <YAxis dataKey="Model" type="category" width={100} tick={CHART_TICK_SMALL} stroke={CHART_AXIS} />
-                          <Tooltip contentStyle={TOOLTIP_STYLE} />
-                          <Legend wrapperStyle={LEGEND_STYLE} formatter={legendFormatter} />
-                          <Bar dataKey="MAE" fill={COLORS.arima} name="MAE" />
-                          <Bar dataKey="RMSE" fill={COLORS.hybrid} name="RMSE" />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="border-slate-700/70 bg-slate-900/65 backdrop-blur-md">
-                    <CardHeader>
-                      <CardTitle className="text-sm text-slate-50">MAPE (%)</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <ResponsiveContainer width="100%" height={250}>
-                        <BarChart data={metrics}>
-                          <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
-                          <XAxis dataKey="Model" tick={CHART_TICK_SMALL} stroke={CHART_AXIS} />
-                          <YAxis tick={CHART_TICK_SMALL} stroke={CHART_AXIS} />
-                          <Tooltip contentStyle={TOOLTIP_STYLE} />
-                          <Bar dataKey="MAPE" fill={COLORS.lstm} name="MAPE (%)" />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </CardContent>
-                  </Card>
-                </div>
               </>
-            ) : (
-              <Card className="border-slate-700/70 bg-slate-900/65 backdrop-blur-md">
-                <CardContent className="py-12 text-center text-slate-400">
-                  Запустите анализ для сравнения моделей
-                </CardContent>
-              </Card>
             )}
-          </TabsContent>
 
-          {/* Таб: Анализ данных */}
-          <TabsContent value="analysis" className="space-y-4">
-            {/* Исходные данные */}
-            <Card className="border-slate-700/70 bg-slate-900/65 backdrop-blur-md">
-              <CardHeader>
-                <CardTitle className="font-serif text-slate-50">Исторические данные акций SBER</CardTitle>
-                <CardDescription className="text-slate-300">
-                  Цена акций Сбербанка на Московской бирже
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {priceData.length > 0 ? (
-                  <>
-                    <RangeSelector chartKey="analysis" dataLength={priceData.length} />
-                    <div
-                    className="h-[350px] cursor-grab select-none active:cursor-grabbing"
-                    role="application"
-                    onPointerDown={(event) =>
-                      startChartPan('analysis', event, analysisWindow, priceData.length)
-                    }
-                    onPointerLeave={stopChartPan}
-                  >
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={visiblePriceData}>
-                        <defs>
-                          <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor={COLORS.hybrid} stopOpacity={0.3}/>
-                            <stop offset="95%" stopColor={COLORS.hybrid} stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
-                        <XAxis 
-                          dataKey="date" 
-                          tick={CHART_TICK}
-                          stroke={CHART_AXIS}
-                          angle={-45}
-                          textAnchor="end"
-                          height={80}
-                        />
-                        <YAxis tick={CHART_TICK} stroke={CHART_AXIS} domain={chartDomainWithPadding} />
-                        <Tooltip contentStyle={TOOLTIP_STYLE} isAnimationActive={false} />
-                        <Area 
-                          type="monotone" 
-                          dataKey="close" 
-                          stroke={COLORS.hybrid} 
-                          fillOpacity={1} 
-                          isAnimationActive={false}
-                          fill="url(#colorPrice)"
-                          name="Цена закрытия"
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <ChartScrollbar
-                    totalCount={priceData.length}
-                    window={analysisWindow}
-                    onChange={handleScrollbarChange('analysis')}
-                    className="mt-2"
-                  />
-                  </>
-                ) : (
-                  <div className="h-[350px] flex items-center justify-center text-slate-400">
-                    Запустите анализ для загрузки данных
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Стационарность */}
-            {stationarity && (
-              <Card className="border-slate-700/70 bg-slate-900/65 backdrop-blur-md">
-                <CardHeader>
-                  <CardTitle className="font-serif text-slate-50">Анализ стационарности</CardTitle>
-                  <CardDescription className="text-slate-300">
-                    Тесты Дики-Фуллера (ADF) и KPSS
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid gap-6 text-slate-100 md:grid-cols-2">
-                    <div>
-                      <h4 className="mb-2 font-medium text-slate-100">ADF тест</h4>
-                      <div className="space-y-2 text-sm text-slate-100">
-                        <div className="flex justify-between">
-                          <span className="text-slate-300">Статистика:</span>
-                          <span className="font-mono text-slate-100">{stationarity.adf.test_statistic.toFixed(4)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-300">p-value:</span>
-                          <span className="font-mono text-slate-100">{stationarity.adf.p_value.toFixed(4)}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-slate-300">Результат:</span>
-                          <Badge variant={stationarity.adf.is_stationary ? 'default' : 'destructive'}>
-                            {stationarity.adf.interpretation}
-                          </Badge>
-                        </div>
-                      </div>
-                    </div>
-                    <div>
-                      <h4 className="mb-2 font-medium text-slate-100">KPSS тест</h4>
-                      <div className="space-y-2 text-sm text-slate-100">
-                        <div className="flex justify-between">
-                          <span className="text-slate-300">Статистика:</span>
-                          <span className="font-mono text-slate-100">{stationarity.kpss.test_statistic.toFixed(4)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-300">p-value:</span>
-                          <span className="font-mono text-slate-100">{stationarity.kpss.p_value.toFixed(4)}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-slate-300">Результат:</span>
-                          <Badge variant={stationarity.kpss.is_stationary ? 'default' : 'destructive'}>
-                            {stationarity.kpss.is_stationary ? 'Стационарен' : 'Нестационарен'}
-                          </Badge>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <Separator className="my-4" />
-                  <div className="text-sm text-slate-100">
-                    <span className="font-medium text-slate-100">Итог: </span>
-                    {stationarity.stationarity_type}
-                  </div>
-                </CardContent>
-              </Card>
+            {activeView === 'analysis' && (
+              <AnalysisView
+                dataInfo={dataInfo}
+                priceData={priceData}
+                visiblePriceData={visiblePriceData}
+                analysisWindow={analysisWindow}
+                stationarity={stationarity}
+                bestModel={bestModel}
+                onRangeSelect={(days) => setChartRange('analysis', days, priceData.length)}
+                onChartPan={(e, w, l) => startChartPan('analysis', e, w, l)}
+                onStopPan={stopChartPan}
+                onScrollbarChange={handleScrollbarChange('analysis')}
+              />
             )}
-          </TabsContent>
 
-          {/* Таб: Прогноз на будущее */}
-          <TabsContent value="future" className="space-y-4">
-            <Card className="border-slate-700/70 bg-slate-900/65 backdrop-blur-md">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="font-serif text-slate-50">Прогноз на 30 дней</CardTitle>
-                    <CardDescription className="text-slate-300">
-                      Предсказание будущих цен акций
-                    </CardDescription>
-                  </div>
-                  <Button 
-                    onClick={handleForecastFuture}
-                    disabled={!predictions || isLoading || isForecastLoading}
-                    variant="outline"
-                    className="border-slate-500/70 bg-slate-900/70 text-slate-100 hover:bg-slate-800 hover:text-slate-50"
-                  >
-                    {isForecastLoading ? (
-                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <TrendingUp className="h-4 w-4 mr-2" />
-                    )}
-                    Прогноз
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {futureForecast ? (
-                  <>
-                    <RangeSelector chartKey="future" dataLength={futureChartData.length} />
-                    <span className="sr-only" data-testid="last-observed-date">
-                      {lastObservedDate}
-                    </span>
-                    <span className="sr-only" data-testid="forecast-start-date">
-                      {forecastStartDate}
-                    </span>
-                    <div
-                        className="h-[400px] cursor-grab select-none active:cursor-grabbing"
-                        role="application"
-                        onPointerDown={(event) =>
-                          startChartPan('future', event, futureWindow, futureChartData.length)
-                        }
-                        onPointerLeave={stopChartPan}
-                      >
-                        <ResponsiveContainer width="100%" height="100%">
-                          <ComposedChart data={visibleFutureData}>
-                            <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
-                            <XAxis 
-                              dataKey="date" 
-                              tick={CHART_TICK}
-                              stroke={CHART_AXIS}
-                              angle={-45}
-                              textAnchor="end"
-                              height={80}
-                            />
-                            <YAxis tick={CHART_TICK} stroke={CHART_AXIS} domain={chartDomainWithPadding} />
-                            <Tooltip contentStyle={TOOLTIP_STYLE} isAnimationActive={false} />
-                            <Legend wrapperStyle={LEGEND_STYLE} formatter={legendFormatter} />
-                            <ReferenceLine 
-                              x={lastObservedDate || undefined}
-                              stroke="#94a3b8" 
-                              strokeDasharray="3 3"
-                              label={{ value: 'Сегодня', position: 'top', fontSize: 10 }}
-                            />
-                            <Line 
-                              type="monotone" 
-                              dataKey="actual" 
-                              stroke={COLORS.actual} 
-                              strokeWidth={2}
-                              isAnimationActive={false}
-                              dot={false}
-                              name="Фактические"
-                            />
-                            <Line 
-                              type="monotone" 
-                              dataKey="hybrid" 
-                              stroke={COLORS.hybrid} 
-                              strokeWidth={2}
-                              strokeDasharray="5 5"
-                              isAnimationActive={false}
-                              dot={false}
-                              name="Прогноз"
-                            />
-                          </ComposedChart>
-                        </ResponsiveContainer>
-                      </div>
-                      <ChartScrollbar
-                        totalCount={futureChartData.length}
-                        window={futureWindow}
-                        onChange={handleScrollbarChange('future')}
-                        className="mt-2"
-                      />
-                    </>
-                  ) : (
-                  <div className="h-[400px] flex items-center justify-center text-slate-400">
-                    Сначала запустите анализ, затем нажмите "Прогноз" для получения предсказаний
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {futureForecast && (
-              <Card className="border-slate-700/70 bg-slate-900/65 backdrop-blur-md">
-                <CardHeader>
-                  <CardTitle className="text-sm text-slate-50">Таблица прогноза</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="overflow-x-auto max-h-60">
-                    <table className="w-full text-sm text-slate-100">
-                      <thead className="sticky top-0 bg-slate-900/95">
-                        <tr className="border-b border-slate-700/70">
-                          <th className="py-2 px-3 text-left text-slate-200">Дата</th>
-                          <th className="py-2 px-3 text-right text-slate-200">Прогноз (руб.)</th>
-                          <th className="py-2 px-3 text-right text-slate-200">Ниж. граница</th>
-                          <th className="py-2 px-3 text-right text-slate-200">Верх. граница</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {futureForecast.dates.map((date: string, i: number) => (
-                          <tr key={date} className="border-b border-slate-700/70 hover:bg-slate-800/60">
-                            <td className="py-2 px-3 text-slate-100">{date}</td>
-                            <td className="text-right py-2 px-3 font-medium text-amber-300">
-                              {futureForecast.hybrid[i].toFixed(2)}
-                            </td>
-                            <td className="text-right py-2 px-3 text-slate-300">
-                              {futureForecast.conf_int_lower[i]?.toFixed(2) || '—'}
-                            </td>
-                            <td className="text-right py-2 px-3 text-slate-300">
-                              {futureForecast.conf_int_upper[i]?.toFixed(2) || '—'}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </CardContent>
-              </Card>
+            {activeView === 'comparison' && (
+              <ComparisonView 
+                metrics={metrics} 
+                bestModel={bestModel} 
+              />
             )}
-          </TabsContent>
-        </Tabs>
 
-        {/* Информация о моделях */}
-        <Card className="mt-6 border-slate-700/70 bg-slate-900/65 backdrop-blur-md">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 font-serif text-slate-50">
-              <Brain className="h-5 w-5 text-amber-300" />
-              О гибридной модели
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="max-w-none text-slate-300">
-            <div className="grid md:grid-cols-3 gap-6 text-sm">
-              <div>
-                <h4 className="mb-2 font-medium text-blue-300">ARIMA</h4>
-                <p className="text-slate-300">
-                  Моделирует линейную компоненту временного ряда. 
-                  Автоматический подбор параметров (p, d, q) через AIC критерий.
-                </p>
-              </div>
-              <div>
-                <h4 className="mb-2 font-medium text-cyan-300">LSTM</h4>
-                <p className="text-slate-300">
-                  Глубокая нейронная сеть для захвата нелинейных паттернов 
-                  в остатках ARIMA. Два LSTM слоя с dropout для регуляризации.
-                </p>
-              </div>
-              <div>
-                <h4 className="mb-2 font-medium text-amber-300">Гибридная модель</h4>
-                <p className="text-slate-300">
-                  Комбинирует прогнозы: Final = ARIMA + LSTM(остатки). 
-                  Учитывает как линейные, так и нелинейные зависимости.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </main>
-
-      {/* Подвал */}
-      <footer className="mt-auto border-t border-slate-700/70 bg-slate-950/70 py-4 backdrop-blur-sm">
-        <div className="mx-auto max-w-7xl px-4 text-center text-sm text-slate-300">
-          <p>
-            Гибридная модель ARIMA-LSTM для прогнозирования акций Сбербанка
-          </p>
-          <p className="text-xs mt-1">
-            Прикладная информатика — Дипломная работа
-          </p>
+            {activeView === 'future' && (
+              <FutureView
+                futureForecast={futureForecast}
+                futureChartData={futureChartData}
+                visibleFutureData={visibleFutureData}
+                futureWindow={futureWindow}
+                predictions={predictions}
+                isForecastLoading={isForecastLoading}
+                isLoading={isLoading}
+                lastObservedDate={lastObservedDate}
+                forecastStartDate={forecastStartDate}
+                handleForecastFuture={handleForecastFuture}
+                onRangeSelect={(days) => setChartRange('future', days, futureChartData.length)}
+                onChartPan={(e, w, l) => startChartPan('future', e, w, l)}
+                onStopPan={stopChartPan}
+                onScrollbarChange={handleScrollbarChange('future')}
+              />
+            )}
+          </div>
         </div>
-      </footer>
-    </div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }

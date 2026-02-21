@@ -370,11 +370,11 @@ def arima_forecast(history: np.ndarray, steps: int) -> np.ndarray:
     try:
         fitted = fit_best_arima_model(history)
         if fitted is None:
-            raise ValueError("ARIMA fit failed for all candidate orders")
+            raise ValueError("Не удалось обучить модель ARIMA (все параметры не подошли)")
 
         forecast = np.array(fitted.forecast(steps=steps), dtype=float)
         if len(forecast) != steps or not np.all(np.isfinite(forecast)):
-            raise ValueError("ARIMA forecast contains invalid values")
+            raise ValueError("Прогноз ARIMA содержит некорректные значения")
         return forecast
     except Exception:
         last = float(history[-1]) if len(history) else 0.0
